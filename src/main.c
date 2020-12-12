@@ -1,21 +1,21 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include "map.h"
+#include "controls.h"
 #define ERR(source) (perror(source),\
                      fprintf(stderr,"%s:%d\n",__FILE__,__LINE__),\
                      exit(EXIT_FAILURE))
-enum GAME_STATE{
-    MAIN_MENU,
-    IN_GAME
-};
+
 int main(int argc, char** argv){
-    Map m = {NULL, 0};
-    for(int i = 0; i < 5; i++){
-        addRoom(&m, i);
+    Map map = {NULL, 0};
+    GAME_STATE state = MAIN_MENU;
+    while(1){
+        char* command = readInput();
+        proccessInput(&state, command, &map);
     }
-    addDoor(&m, 0, 1);
-    addDoor(&m, 0, 4);
-    printMap(m);
-    deleteMap(m);
+    printMap(map);
     return EXIT_SUCCESS;
 }
