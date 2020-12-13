@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <time.h>
+#define IN_BACKPACK 1000
 #define ERR(source) (perror(source),\
                      fprintf(stderr,"%s:%d\n",__FILE__,__LINE__),\
                      exit(EXIT_FAILURE))
@@ -162,9 +163,71 @@ void initGame(Game* g){
     g->noOfItems = (g->map.noOfRooms * 3) / 2;
     initPlayer(&g->player, &g->map);
 }
+void moveTo(Map* map, Player* player, int room){
+    if(player->currentRoom->ID == room){
+        printf("You are already in this room!\n");
+        return;
+    }
+    for(int i = 0; i < player->currentRoom->noOfDoors; i++){
+        if(player->currentRoom->doors[i] == room){
+            for(int j = 0; j < map->noOfRooms; j++){
+                if(map->rooms[j].ID == room){
+                    player->currentRoom = &map->rooms[j];
+                    return;
+                }
+            }
+        }
+    }
+    printf("No doors to room %d", room);
+}
 void deleteMap(Map* map){
     for(int i = 0; i < map->noOfRooms; i++){
         map->rooms[i].noOfDoors = 0;
     }
     map->noOfRooms = 0;
+}
+void pickUp(Player* player, Item* items, int noOfItems, int itemToPickUp){
+    if(player->noOfItems >= 2){
+        printf("Backapck is full!!\n");
+        return;
+    }
+    for(int i = 0; i < noOfItems; i++){
+        if(items[i].ID == itemToPickUp && items[i].currentRoom == player->currentRoom->ID){
+            player->backpack[player->noOfItems] = itemToPickUp;
+            player->noOfItems++;
+            player->currentRoom->noOfCurItems--;
+            items[i].currentRoom = IN_BACKPACK;
+            if(player->currentRoom->curItems[0] == itemToPickUp)
+                player->currentRoom->curItems[0] = player->currentRoom->curItems[1];
+            return;
+        }
+    }
+    printf("no such item in this room!!\n");
+}
+void drop(Player* player, Item* items, int noOfItems, int itemToDrop){
+    if(player->noOfItems <= 0){
+        printf("Your backpack is empty!!!\n");
+        return;
+    }
+    if(player->currentRoom->noOfCurItems >= 2){
+        printf("There is no place in this room!!!\n");
+        return;
+    }
+    for(int i = 0 ; i < noOfItems; i++){
+        if(items[i].ID == itemToDrop){
+            for(int j = 0; j < player->noOfItems; j++){
+                if(player->backpack[j] == itemToDrop){
+                    player->currentRoom->curItems[player->currentRoom->noOfCurItems] = itemToDrop;
+                    player->currentRoom->noOfCurItems++;
+                    items[i].currentRoom = player->currentRoom->ID;
+                    player->noOfItems--;
+                    if(player->backpack[0] == itemToDrop){
+                        player->backpack[0] = player->backpack[1];
+                    }
+                    return;
+                }
+            }
+        }
+    }
+    printf("No such item in your backpack!!\n");
 }
