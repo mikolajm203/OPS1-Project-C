@@ -64,4 +64,7 @@ int putItem(Map* m, int roomID, int itemID);
 int setDestined(Map* map, int roomID,int itemID);
 void initPlayer(Player* player, Map* map);
 Item* initItems(Map* m);                       // Populates map with items
+void moveTo(Map* map, Player* player,int room);
+void pickUp(Player* player, Item* items, int noOfItems, int itemToPickUp);
+void drop(Player* player, Item* items, int noOfItems, int itemToDrop);
 #endif
