@@ -21,7 +21,9 @@ void printInfo(Game* game){
     case IN_GAME:
         printf("\nAvailable commands: \n");
         printf("1. quit\n");
-        printf("2. move-to(doesnt work)\n\n");
+        printf("2. move-to \"room\"\n");
+        printf("3. pick-up \"item\"\n");
+        printf("4. drop \"item\"\n\n");
         printf("You are in room: %d\n", game->player.currentRoom->ID);
         printf("Doors to: ");
         for(int i = 0; i < game->player.currentRoom->noOfDoors; i++){
@@ -92,6 +94,17 @@ int proccessGame(char* command, Game* game){
     else if(strcmp(command, "move-to") == 0){
         int roomID;
         scanf("%d", &roomID);
+        moveTo(&game->map, &game->player, roomID);
+    }
+    else if(strcmp(command, "pick-up") == 0){
+        int pickID;
+        scanf("%d", &pickID);
+        pickUp(&game->player, game->items, game->noOfItems, pickID);
+    }
+    else if(strcmp(command, "drop") == 0){
+        int dropID;
+        scanf("%d" ,&dropID);
+        drop(&game->player, game->items, game->noOfItems, dropID);
     }
     else{
         printf("Wrong command!.\n");
