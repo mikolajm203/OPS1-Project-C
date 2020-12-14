@@ -1,9 +1,4 @@
 #include "Input.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
-#include <unistd.h>
 
 char* readInput(){
     char* ret = (char*)malloc(sizeof(char) * MAX_COMMAND_LENGTH);
@@ -16,14 +11,17 @@ void printInfo(Game* game){
     case MAIN_MENU:
         printf("\nAvailable commands:\n");
         printf("1. read-map \"path\"\n");
+        printf("2. generate-random-map \"Number of rooms\" \"path\"\n");
         printf("2. exit\n");
         break;
     case IN_GAME:
         printf("\nAvailable commands: \n");
-        printf("1. quit\n");
-        printf("2. move-to \"room\"\n");
-        printf("3. pick-up \"item\"\n");
-        printf("4. drop \"item\"\n\n");
+        printf("1. move-to \"room\"\n");
+        printf("2. pick-up \"item\"\n");
+        printf("3. drop \"item\"\n");
+        printf("4. find-path \"room\" \"number of threads\"\n");
+        printf("5. save \"path\"\n");
+        printf("6. quit\n\n");
         printf("You are in room: %d\n", game->player.currentRoom->ID);
         printf("Doors to: ");
         for(int i = 0; i < game->player.currentRoom->noOfDoors; i++){
@@ -40,11 +38,18 @@ void printInfo(Game* game){
         for(int i = 0; i < game->player.noOfItems; i++)
             printf(" %d", game->player.backpack[i]);
         printf("]\n");
+        break;
+    case POST_GAME:
+        printf("\n---------------------\n");
+        printf("------YOU WIN!!------\n");
+        printf("---------------------\n");
+        printf("Type \" exit\" to close the game\n");
+        break;
     default:
         break;
     }
 }
-int proccessInput(char* command, Game* game){
+void proccessInput(char* command, Game* game){
     switch (game->state)
     {
     case MAIN_MENU:
@@ -54,15 +59,16 @@ int proccessInput(char* command, Game* game){
     case IN_GAME:
         proccessGame(command, game);
         break;
-
+    case POST_GAME:
+        proccessPost(command, game);
+        break;
     default:
-        return -1;
+        ERR("strange state");
         break;
     }
-    return 0;
 }
 
-int proccessMenu(char* command, Game* game){
+void proccessMenu(char* command, Game* game){
     char* path = (char*)malloc(sizeof(char) * MAX_COMMAND_LENGTH);
     if(strcmp(command, "exit") == 0){
         printf("closing the game..\n");
@@ -74,19 +80,25 @@ int proccessMenu(char* command, Game* game){
         if( access( path, F_OK ) == -1)
         {
             printf("no such file in path: %s\n", path);
-            return 0;
+            return;
         }
         loadFromFile(path, &game->map);
         initGame(game);
         game->state = IN_GAME;
     }
+    else if(strcmp(command, "generate-random-map") == 0){
+        int n;
+        scanf("%d", &n);
+        scanf("%s", path);
+        printf("generating map %d %s\n", n, path);
+        generateMap(n, path);
+    }
     else{
         printf("Wrong command!.\n");
     }
     free(path);
-    return 0;
 }
-int proccessGame(char* command, Game* game){
+void proccessGame(char* command, Game* game){
     if(strcmp(command, "quit") == 0){
         printf("returning to main menu..\n");
         game->state = MAIN_MENU;
@@ -106,8 +118,31 @@ int proccessGame(char* command, Game* game){
         scanf("%d" ,&dropID);
         drop(&game->player, game->items, game->noOfItems, dropID);
     }
-    else{
-        printf("Wrong command!.\n");
+    else if(strcmp(command, "find-path") == 0){
+        int room, k;
+        scanf("%d", &room);
+        scanf("%d", &k);
+        printPath(*game, room, k);
     }
-    return 0;
+    else if(strcmp(command, "save") == 0){
+        char path[MAX_COMMAND_LENGTH];
+        scanf("%s", &path);
+        save(game, path);
+    }
+    else{
+        printf("Wrong command!\n");
+    }
+}
+void proccessPost(char* command, Game* game){
+    if(strcmp(command, "return") == 0){
+        game->state = MAIN_MENU;
+        return;
+    }
+    else if(strcmp(command, "exit") == 0){
+        printf("closing the game...\n");
+        exit(EXIT_SUCCESS);
+    }
+    else{
+        printf("Wrong command!\n");
+    }
 }
