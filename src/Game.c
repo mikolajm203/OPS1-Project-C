@@ -1,27 +1,50 @@
 #include "Game.h"
-
+ssize_t bulk_read(int fd, void *buf, size_t count){
+        ssize_t c;
+        ssize_t len=0;
+        do{
+                c=TEMP_FAILURE_RETRY(read(fd,buf,count));
+                if(c<0) return c;
+                if(c==0) return len; //EOF
+                buf+=c;
+                len+=c;
+                count-=c;
+        }while(count>0);
+        return len ;
+}
+ssize_t bulk_write(int fd, void *buf, size_t count){
+        ssize_t c;
+        ssize_t len=0;
+        do{
+                c=TEMP_FAILURE_RETRY(write(fd,buf,count));
+                if(c<0) return c;
+                buf+=c;
+                len+=c;
+                count-=c;
+        }while(count>0);
+        return len ;
+}
 void loadFromFile(char* path, Map* map){
     map->noOfRooms = 0;
     for(int i = 0; i < MAX_ROOMS; i++){
         map->rooms[i].noOfDoors = 0;
     }
     int f;
-    if((f = open(path, O_RDONLY)) < 0)    ERR("open");
-    int buf;
-    int noOfRooms;
-    if(read(f, &noOfRooms, sizeof(int)) == -1) ERR("read");
-    for(int i = 0; i < noOfRooms; i++){
-        if(read(f, &buf, sizeof(int)) == -1) ERR("read");
-        addRoom(map, buf);
-        printf("added room: %d\n", buf);
+    if(TEMP_FAILURE_RETRY((f = open(path, O_RDONLY))) < 0)    ERR("open");
+    if(bulk_read(f, &map->noOfRooms, sizeof(int)));
+    for(int i = 0; i < MAX_ROOMS; i++){
+        if(bulk_read(f, &map->rooms[i].ID, sizeof(int)) < 0) ERR("read");
+        for(int j = 0; j < MAX_ITEMS; j++){
+            if(bulk_read(f, &map->rooms[i].curItems[j], sizeof(int)) < 0) ERR("read");
+        }
+        if(bulk_read(f, &map->rooms[i].noOfCurItems, sizeof(int)) < 0) ERR("read");
+        if(bulk_read(f, &map->rooms[i].noOfDestinedItems, sizeof(int)) < 0) ERR("read");
+        for(int j = 0; j < MAX_DOORS; j++){
+            if(bulk_read(f, &map->rooms[i].doors[j], sizeof(int)) < 0) ERR("read");
+        }
+        if(bulk_read(f, &map->rooms[i].noOfDoors, sizeof(int)) < 0) ERR("read");
     }
-    int connectedRooms[2];
-    while(read(f, &connectedRooms[0], sizeof(int)) != 0){
-        if(read(f, &connectedRooms[1], sizeof(int)) == -1) ERR("read");
-        addDoor(map, connectedRooms[0], connectedRooms[1]);
-        printf("added door: %d %d\n", connectedRooms[0], connectedRooms[1]);
-    }
-    close(f);
+    if(TEMP_FAILURE_RETRY(close(f) == -1)) ERR("close");
 }
 void generateMap(int n, char* path){
     struct stat s;
@@ -29,12 +52,10 @@ void generateMap(int n, char* path){
         printf("Too much rooms!\n");
         return;
     }
-    if( stat(path,&s) == 0 )
-    {
-        if( s.st_mode & S_IFDIR ){
-            printf("You haven't specified the name of the file!\n");
-            return;
-        }
+    stat(path,&s);
+    if(S_ISDIR(s.st_mode)) {
+        printf("You haven't specified the name of the file!\n");
+        return;
     }
     Map map;
     map.noOfRooms = 0;
@@ -57,28 +78,113 @@ void generateMap(int n, char* path){
         addDoor(&map, currentID, nextID);
         currentID = nextID;
     }
-    printMap(map);
-    saveMap(map, path);
-}
-void saveMap(Map m, char* path){
-    int f;
-    if((f = open(path, O_WRONLY|O_CREAT, 0777)) < 0) ERR("open in saveMap");
-    if(write(f, &m.noOfRooms, sizeof(int)) == -1) ERR("write in saveMap");
-    for(int i = 0; i < m.noOfRooms; i++){
-        if(write(f, &m.rooms[i].ID, sizeof(int)) == -1) ERR("write");
+    for(int i = 0; i < map.noOfRooms; i++){
+        map.rooms[i].noOfCurItems = 0;
+        map.rooms[i].noOfDestinedItems = 0;
     }
-    for(int i = 0; i < m.noOfRooms; i++){
-        for(int j = 0 ; j < m.rooms[i].noOfDoors; j++){
-            if(write(f, &m.rooms[i].ID, sizeof(int)) == -1) ERR("write");
-            if(write(f, &m.rooms[i].doors[j], sizeof(int)) == -1) ERR("write");
+    saveMap(&map, path);
+}
+void loadFromDir(Map* m, char* path_d, char* path_f){
+    DirToMap(m, path_d, 0);
+    saveMap(m, path_f);
+}
+void DirToMap(Map* m, char* path_d, int prevID){
+    DIR* dir;
+    struct dirent* direntry;
+    if((dir = opendir(path_d)) == NULL){
+        return;
+    }
+    if(m->noOfRooms == 0)
+        addRoom(m, m->noOfRooms);
+    char* newPath = path_d;
+    while((direntry = readdir(dir)) != NULL){
+        if(strcmp(direntry->d_name, ".") != 0 && strcmp(direntry->d_name, "..") != 0){
+            int curID = m->noOfRooms;
+            addRoom(m, m->noOfRooms);
+            strcat(newPath, "/");
+            strcat(newPath, direntry->d_name);
+            addDoor(m, prevID, curID);
+            DirToMap(m, newPath, curID);
+            char* tmp;
+            tmp = strstr(newPath, direntry->d_name);
+            tmp--;
+            *tmp = '\0';
         }
     }
-    close(f);
+}
+void saveMap(Map* m, char* path){
+    int f;
+    if(TEMP_FAILURE_RETRY(f = open(path, O_WRONLY|O_CREAT, 0666)) < 0) ERR("open in saveMap");
+    if(bulk_write(f, m, sizeof(Map)) < 0) ERR("write");
+    if(TEMP_FAILURE_RETRY(close(f)) < 0) ERR("close");
 }
 void saveGame(Game game, char* path){
     int f;
-    if((f = open(path, O_WRONLY|O_CREAT, 0777)) < 0) ERR("open in saveGame");
-    
+    if(TEMP_FAILURE_RETRY((f = open(path, O_WRONLY|O_CREAT, 0666))) < 0) ERR("open in saveGame");
+    // ----------- MAP --------------
+    if(bulk_write(f, &game.map, sizeof(Map)) < 0) ERR("write in saveMap");
+    //---------- Player --------------
+    if(bulk_write(f, &game.player.currentRoom->ID, sizeof(int)) < 0) ERR("write");
+    if(bulk_write(f, &game.player.noOfItems, sizeof(int)) < 0) ERR("write");
+    for(int i = 0; i < game.player.noOfItems; i++)
+        if(bulk_write(f, &game.player.backpack[i], sizeof(int)) < 0) ERR("write");
+    //------------ Items ------------
+    if(bulk_write(f, &game.noOfItems, sizeof(int)) < 0) ERR("write");
+    for(int i = 0; i < game.noOfItems; i++){
+        if(bulk_write(f, &game.items[i].ID, sizeof(int)) < 0) ERR("write");
+        if(bulk_write(f, &game.items[i].currentRoom, sizeof(int)) < 0) ERR("write");
+        if(bulk_write(f, &game.items[i].destinedRoom, sizeof(int)) < 0) ERR("write");
+    }
+    if(TEMP_FAILURE_RETRY(close(f)) < 0) ERR("close");
+}
+void loadGame(Game* game, char* path){
+    game->map.noOfRooms = 0;
+    game->noOfItems = 0;
+    int f;
+    if(TEMP_FAILURE_RETRY(f = open(path, O_RDONLY)) < 0)    ERR("open");
+    // ---------------- MAP -----------------
+    if(bulk_read(f, &game->map.noOfRooms, sizeof(int)));
+    for(int i = 0; i < MAX_ROOMS; i++){
+        if(bulk_read(f, &game->map.rooms[i].ID, sizeof(int)) < 0) ERR("read");
+        for(int j = 0; j < MAX_ITEMS; j++){
+            if(bulk_read(f, &game->map.rooms[i].curItems[j], sizeof(int)) < 0) ERR("read");
+        }
+        if(bulk_read(f, &game->map.rooms[i].noOfCurItems, sizeof(int)) < 0) ERR("read");
+        if(bulk_read(f, &game->map.rooms[i].noOfDestinedItems, sizeof(int)) < 0) ERR("read");
+        for(int j = 0; j < MAX_DOORS; j++){
+            if(bulk_read(f, &game->map.rooms[i].doors[j], sizeof(int)) < 0) ERR("read");
+        }
+        if(bulk_read(f, &game->map.rooms[i].noOfDoors, sizeof(int)) < 0) ERR("read");
+    }
+    int buf;
+    //------------- Player ------------------
+    int playerRoomID;
+    if(bulk_read(f, &playerRoomID, sizeof(int))< 0) ERR("read");
+    for(int i = 0; i < game->map.noOfRooms; i++){
+        if(game->map.rooms[i].ID == playerRoomID){
+            game->player.currentRoom = &game->map.rooms[i];
+            break;
+        }
+    }
+    if(bulk_read(f, &buf, sizeof(int)) < 0) ERR("read");
+    game->player.noOfItems = buf;
+    for(int i = 0; i < game->player.noOfItems; i++){
+        if(bulk_read(f, &buf, sizeof(int)) < 0) ERR("read");
+        game->player.backpack[i] =buf;
+    }
+    //------------- Items ----------------
+    if(bulk_read(f, &buf, sizeof(int)) < 0) ERR("read");
+    game->noOfItems = buf;
+    game->items = (Item*) malloc(sizeof(Item) * game->noOfItems);
+    for(int i = 0; i < game->noOfItems; i++){
+        if(bulk_read(f, &buf, sizeof(int)) < 0) ERR("read");
+        game->items[i].ID = buf;
+        if(bulk_read(f, &buf, sizeof(int)) < 0) ERR("read");
+        game->items[i].currentRoom = buf;
+        if(bulk_read(f, &buf, sizeof(int)) < 0) ERR("read");
+        game->items[i].destinedRoom = buf;
+    }
+    if(TEMP_FAILURE_RETRY(close(f)) < 0) ERR("close");
 }
 void addRoom(Map* m, int ID){
     m->rooms[m->noOfRooms].ID = ID;
@@ -184,6 +290,7 @@ void initPlayer(Player* player, Map* map){
     }
 }
 void initGame(Game* g){
+    g->state = IN_GAME;
     g->items = initItems(&g->map);
     g->noOfItems = (g->map.noOfRooms * 3) / 2;
     initPlayer(&g->player, &g->map);
@@ -303,6 +410,36 @@ void* seekPath(void* args){
     }
     pthread_mutex_unlock(a->mxLength);
     return NULL;
+}
+void swapItems(Game* g, int ID1, int ID2){
+    int index1, index2;
+    for(int i = 0; i < g->noOfItems; i++){
+        if(g->items[i].ID == ID1)
+            index1 = i;
+        if(g->items[i].ID == ID2)
+            index2 = i;
+    }
+    int tmp = g->items[index1].currentRoom;
+    g->items[index1].currentRoom = g->items[index2].currentRoom;
+    g->items[index2].currentRoom = tmp;
+    int roomIndex1, itemIndex1;
+    int roomIndex2, itemIndex2;
+    for(int i = 0; i <g->map.noOfRooms; i++){
+        for(int j = 0; j < g->map.rooms[i].noOfCurItems; j++){
+            if(g->map.rooms[i].curItems[j] == ID1){
+                roomIndex1 = i;
+                itemIndex1 = j;
+            }
+            else if(g->map.rooms[i].curItems[j] == ID2){
+                roomIndex2 = i;
+                itemIndex2 = j;
+            }
+        }
+    }
+    tmp = g->map.rooms[roomIndex1].curItems[itemIndex1];
+    g->map.rooms[roomIndex1].curItems[itemIndex1] = g->map.rooms[roomIndex2].curItems[itemIndex2];
+    g->map.rooms[roomIndex2].curItems[itemIndex2] = tmp;
+    printf("Swapping item %d with %d\n", ID1, ID2);
 }
 int checkWin(Item* items, int noOfItems){
     for(int i = 0; i < noOfItems; i++){
