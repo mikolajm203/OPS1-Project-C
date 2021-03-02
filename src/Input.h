@@ -5,6 +5,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <signal.h>
 #define MAX_COMMAND_LENGTH 1000
 #define ERR(source) (perror(source),\
                      fprintf(stderr,"%s:%d\n",__FILE__,__LINE__),\
@@ -14,8 +15,8 @@
 
 char* readInput();                                                 //Reads input from user
 void printInfo(Game* game);                                        //Prints info to the user about the game
-void proccessInput(char* command, Game* game);                     //Proccesses input from user (main program's logic)
+void proccessInput(char* command, Game* game, pthread_t swaptid, pthread_t savetid);  //Proccesses input from user (main program's logic)
 void proccessMenu(char* command, Game* game);                      //Proccesses input while in MAIN_MENU state
-void proccessGame(char* command, Game* game);                      //Proccesses input while in IN_GAME state
+void proccessGame(char* command, Game* game, pthread_t swaptid, pthread_t savetid);   //Proccesses input while in IN_GAME state
 void proccessPost(char* command, Game* game);                      //Proccesses inpit while in POST_GAME state
 #endif
